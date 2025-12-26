@@ -8,7 +8,7 @@ sys.path.append(os.getcwd())
 
 from torch.utils.data import DataLoader
 from models.linear_proxy import LinearProxy
-# 导入所有选择器
+# Import all selectors / 导入所有选择器
 from algorithm.forward_inf import ForwardINFSelector
 from algorithm.baseline import RandomSelector, TracInSelector, InfluenceFunctionSelector
 from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom
@@ -18,7 +18,7 @@ def main(args):
     print(f"Using device: {device}")
     print(f"Running Experiment Method: [{args.method}]")
 
-    # 1. 数据集加载
+    # 1. Dataset Loading / 数据集加载
     if args.data == 'custom':
         Data = Dataset_Custom
     elif args.data in ['ETTh1', 'ETTh2']:
@@ -28,6 +28,8 @@ def main(args):
     else:
         Data = Dataset_Custom
 
+    # Note: For TracIn/IF, to calculate gradients precisely, it is recommended to set a smaller batch_size or handle it in an internal loop
+    # Here we keep it consistent and use args.batch_size
     # 注意：对于 TracIn/IF，为了精确计算梯度，建议 batch_size 设小一点，或者在内部循环处理
     # 这里保持一致，使用 args.batch_size
     train_dataset = Data(
@@ -50,7 +52,7 @@ def main(args):
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=False)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True)
 
-    # 2. 初始化模型 (Random 不需要模型)
+    # 2. Initialize Model (Random does not need a model) / 初始化模型 (Random 不需要模型)
     if args.method != 'random':
         try:
             sample_x, _, _, _ = train_dataset[0]
@@ -61,38 +63,40 @@ def main(args):
     else:
         model = None
 
-    # 3. 选择筛选策略
+    # 3. Select Selection Strategy / 选择筛选策略
     if args.method == 'forward_inf':
-        # 论文提出的方法
+        # Method proposed in the paper / 论文提出的方法
         selector = ForwardINFSelector(model, device, pred_len=args.pred_len)
         selection_mode = args.selection_mode # 'positive', 'gmm', 'top_k'
     elif args.method == 'tracin':
-        # 基线：梯度追踪
+        # Baseline: Gradient Tracing / 基线：梯度追踪
         selector = TracInSelector(model, device, pred_len=args.pred_len)
         selection_mode = 'top_k'
     elif args.method == 'if':
-        # 基线：影响函数
+        # Baseline: Influence Function / 基线：影响函数
         selector = InfluenceFunctionSelector(model, device, pred_len=args.pred_len)
         selection_mode = 'top_k'
     elif args.method == 'random':
-        # 基线：随机
+        # Baseline: Random / 基线：随机
         selector = RandomSelector(pred_len=args.pred_len)
         selection_mode = 'top_k'
     else:
         raise NotImplementedError(f"Method {args.method} not implemented")
 
-    # 4. 执行筛选
+    # 4. Execute Selection / 执行筛选
+    # Note: Forward-INF uses lr_adapt and adaptation_steps
+    # Other methods may ignore these parameters
     # 注意：Forward-INF 使用 lr_adapt 和 adaptation_steps
     # 其他方法可能忽略这些参数
     keep_indices, scores = selector.select_data(
         train_loader, val_loader, 
         lr_adapt=args.lr_adapt, 
         adaptation_steps=args.adapt_steps,
-        selection_mode=selection_mode, # 传递模式
+        selection_mode=selection_mode, # Pass mode / 传递模式
         keep_ratio=args.keep_ratio
     )
 
-    # 5. 保存结果
+    # 5. Save Results / 保存结果
     if not os.path.exists(args.save_path):
         os.makedirs(args.save_path)
     
